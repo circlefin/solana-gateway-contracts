@@ -1,0 +1,30 @@
+name: Continuous Integration
+on:
+  pull_request:
+  push:
+    branches: [master]
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@95d9a5deda9de15063e7595e9719c11c38c90ae2 # v2.13.2
+        with:
+          egress-policy: block
+          policy: global-allowed-endpoints-policy
+
+      - name: Check out repository code
+        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+
+  scan:
+    needs: ci
+    if: github.event_name == 'pull_request'
+    uses: circlefin/circle-public-github-workflows/.github/workflows/pr-scan.yaml@v1
+
+  release-sbom:
+    needs: ci
+    if: github.event_name == 'push'
+    uses: circlefin/circle-public-github-workflows/.github/workflows/attach-release-assets.yaml@v1

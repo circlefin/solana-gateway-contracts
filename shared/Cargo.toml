@@ -1,0 +1,18 @@
+[package]
+name = "gateway-shared"
+version = "0.1.0"
+description = "Shared utilities for Gateway programs"
+edition = "2021"
+
+[lib]
+crate-type = ["lib"]
+name = "gateway_shared"
+
+[features]
+default = []
+idl-build = ["anchor-lang/idl-build"]
+no-idl = []
+
+[dependencies]
+anchor-lang = "0.31.1"
+libsecp256k1 = "0.7"
