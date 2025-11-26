@@ -9,6 +9,14 @@ skip-lint = false
 [programs.localnet]
 gateway_minter = "3YG8pvZVNTb3wXVg1UgHfvaTC7AncaNKHgtmzxBW7uuG"
 gateway_wallet = "FoJivoRruRbb3V718kkhXhdXnQTwqPFht6CSxwg158aQ"
+cpi_test = "cpiRNFnzqmBEe1AxU3SjZJzh2L3LeLhtZ2UaGx41n8u"
+
+[workspace]
+members = [
+  "programs/gateway-minter",
+  "programs/gateway-wallet",
+  "tests/programs/cpi-test"
+]
 
 [registry]
 url = "https://api.apr.dev"

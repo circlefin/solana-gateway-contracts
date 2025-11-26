@@ -121,6 +121,8 @@ pub enum GatewayWalletError {
     PreviousInstructionNotEd25519Program,
     #[msg("Invalid Ed25519 instruction data")]
     InvalidEd25519InstructionData,
+    #[msg("Invalid invocation via CPI")]
+    InvalidInvocationViaCPI,
     #[msg("Invalid delegate account")]
     InvalidDelegateAccount,
     #[msg("Delegate depositor does not match source depositor")]
