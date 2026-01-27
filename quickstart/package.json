@@ -1,15 +1,13 @@
 {
   "name": "solana-gateway-quickstart",
   "version": "1.0.0",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
+  "license": "Apache-2.0",
   "type": "module",
+  "private": true,
+  "description": "Quickstart guide for solana-gateway",
+  "scripts": {
+    "test": "echo \"No tests for quickstart\""
+  },
   "dependencies": {
     "@coral-xyz/anchor": "^0.32.1",
     "@solana/addresses": "^5.1.0",
