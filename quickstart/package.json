@@ -1,0 +1,18 @@
+{
+  "name": "solana-gateway-quickstart",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "description": "Quickstart guide for solana-gateway",
+  "scripts": {
+    "test": "echo \"No tests for quickstart\""
+  },
+  "dependencies": {
+    "@coral-xyz/anchor": "^0.32.1",
+    "@solana/addresses": "^5.1.0",
+    "@solana/spl-token": "^0.1.8",
+    "@solana/web3.js": "^1.98.4",
+    "dotenv": "^17.2.3",
+    "viem": "^2.43.2"
+  }
+}
