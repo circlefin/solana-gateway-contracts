@@ -1,7 +1,6 @@
 {
   "name": "solana-gateway-quickstart",
   "version": "1.0.0",
-  "license": "Apache-2.0",
   "type": "module",
   "private": true,
   "description": "Quickstart guide for solana-gateway",
