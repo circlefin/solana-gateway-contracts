@@ -22,10 +22,16 @@ import {
   Keypair,
   LAMPORTS_PER_SOL,
   PublicKey,
+  SystemProgram,
+  SYSVAR_INSTRUCTIONS_PUBKEY,
   Transaction,
   TransactionInstruction,
   Ed25519Program,
 } from "@solana/web3.js";
+import {
+  TOKEN_PROGRAM_ID,
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+} from "@solana/spl-token";
 import { SOLANA_DOMAIN } from "../constants";
 import {
   BI_TRANSFER_SPEC_OFFSET,
@@ -42,13 +48,21 @@ import {
   EvmKeypair,
   signAttestation,
   signBurnIntent,
+  deployProgram,
 } from "../utils";
 import {
   encodeBurnSignerMessage,
   encodeEd25519InstructionData,
   BURN_INTENT_MESSAGE_PREFIX_LENGTH,
   ED25519_DATA_OFFSET,
+  ED25519_SIGNATURE_OFFSET,
+  ED25519_PUBLIC_KEY_OFFSET,
 } from "../burn_data";
+import { readFileSync } from "fs";
+import * as path from "path";
+import { Program } from "@coral-xyz/anchor";
+import type { CpiTest } from "../../target/types/cpi_test";
+import cpiTestIdl from "../../target/idl/cpi_test.json";
 
 describe("Ed25519 Precompile Validation", () => {
   let svm: LiteSVM;
@@ -388,6 +402,110 @@ describe("Ed25519 Precompile Validation", () => {
       await expectAnchorError(
         client.sendTransaction(transaction),
         "InvalidEd25519InstructionData"
+      );
+    });
+  });
+
+  describe("Preventing gateway_burn via CPI", () => {
+    let cpiTestProgram: Program<CpiTest>;
+    beforeEach(async () => {
+      cpiTestProgram = new Program<CpiTest>(
+        cpiTestIdl as CpiTest,
+        client.provider
+      );
+
+      // Deploy the CPI test program
+      const cpiTestProgramBytes = readFileSync(
+        path.join(process.cwd(), "target/deploy/cpi_test.so")
+      );
+      deployProgram(
+        svm,
+        cpiTestProgram.programId,
+        cpiTestProgramBytes,
+        client.owner.publicKey
+      );
+    });
+
+    it("should reject gateway_burn when called via CPI with InvalidInvocationViaCPI", async () => {
+      // Create a valid burn intent signed by the depositor
+      const {
+        intent: burnIntent,
+        bytes: burnBytes,
+        signature: userSignature,
+      } = createSignedBurnIntent({
+        signer: depositor,
+        transferSpecOverrides: {
+          sourceContract: client.gatewayWalletProgram.programId,
+          sourceToken: tokenMint,
+          sourceDepositor: depositor.publicKey,
+          value: BigInt(1000000), // 1 token with 6 decimals
+        },
+      });
+
+      // Encode the burn data with burn signer signature
+      const encodedBurnData = encodeBurnSignerMessage(
+        BigInt(0),
+        userSignature,
+        burnBytes
+      );
+      const burnSignature = signAttestation(
+        encodedBurnData,
+        defaultBurnSigner.privateKey
+      );
+
+      // Create Ed25519 instruction for signature verification
+      // The Ed25519 instruction needs to point to where the burn intent data will be
+      // in the cpi_test instruction (not in a CPI'd gateway_burn instruction). The format
+      // is the same as the gateway_burn instruction.
+      const ed25519Instruction = new TransactionInstruction({
+        keys: [],
+        programId: Ed25519Program.programId,
+        data: encodeEd25519InstructionData(burnBytes.length, {
+          signatureOffset: ED25519_SIGNATURE_OFFSET,
+          signatureInstructionIndex: 1, // Points to cpi_test instruction
+          publicKeyOffset: ED25519_PUBLIC_KEY_OFFSET,
+          publicKeyInstructionIndex: 1,
+          messageDataOffset: ED25519_DATA_OFFSET,
+          messageDataSize: BURN_INTENT_MESSAGE_PREFIX_LENGTH + burnBytes.length,
+          messageInstructionIndex: 1,
+        }),
+      });
+
+      const cpiTestInstruction = await cpiTestProgram.methods
+        .cpiGatewayBurn({
+          encodedBurnData,
+          burnSignature,
+        })
+        .accountsPartial({
+          payer: client.owner.publicKey,
+          gatewayWallet: client.pdas.gatewayWallet.publicKey,
+          tokenMint,
+          custodyTokenAccount: custodyTokenAccountPDA,
+          feeRecipientTokenAccount,
+          deposit,
+          delegateAccount: client.gatewayWalletProgram.programId, // null - using program ID as placeholder for None
+          gatewayWalletProgram: client.gatewayWalletProgram.programId,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          instructionsSysvar: SYSVAR_INSTRUCTIONS_PUBKEY,
+          systemProgram: SystemProgram.programId,
+          eventAuthority: client.pdas.gatewayWalletEventAuthority.publicKey,
+        })
+        .remainingAccounts(
+          createGatewayBurnRemainingAccounts(
+            [burnIntent],
+            client.gatewayWalletProgram.programId
+          )
+        )
+        .instruction();
+
+      const transaction = new Transaction()
+        .add(ed25519Instruction)
+        .add(cpiTestInstruction);
+
+      await expectAnchorError(
+        client.sendTransaction(transaction),
+        "InvalidInvocationViaCPI"
       );
     });
   });

@@ -169,6 +169,7 @@ pub fn gateway_burn<'burn>(
     // Parse the burn intent
     let burn_data: BurnData<'_> = BurnData::new(&params.encoded_burn_data)?;
     verify_user_signature(
+        ctx.program_id,
         &ctx.accounts.instructions_sysvar,
         burn_data.burn_intent_message_length()?,
     )?;
@@ -346,6 +347,7 @@ pub fn gateway_burn<'burn>(
 }
 
 fn verify_user_signature<'burn>(
+    program_id: &Pubkey,
     instructions_sysvar: &UncheckedAccount<'burn>,
     burn_intent_message_length: usize,
 ) -> Result<()> {
@@ -362,6 +364,19 @@ fn verify_user_signature<'burn>(
         current_instruction_index,
         0,
         GatewayWalletError::PreviousInstructionNotEd25519Program
+    );
+
+    // Get the current instruction
+    let current_instruction = get_instruction_relative(0, instructions_sysvar)?;
+
+    // Ensure that the current top-level instruction belongs to this program.
+    // The Ed25519 precompile can only validate signatures contained in top-level
+    // instruction calldata, so we must prevent bypassing this check by executing
+    // `gateway_burn` via CPI.
+    require_eq!(
+        current_instruction.program_id,
+        *program_id,
+        GatewayWalletError::InvalidInvocationViaCPI
     );
 
     // Load the previous instruction

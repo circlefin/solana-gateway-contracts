@@ -1,8 +1,9 @@
 [workspace]
 members = [
-    "programs/gateway-minter",
-    "programs/gateway-wallet",
-    "shared"
+   "programs/gateway-minter",
+   "programs/gateway-wallet",
+   "shared",
+   "tests/programs/cpi-test"
 ]
 resolver = "2"
 
