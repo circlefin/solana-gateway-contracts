@@ -17,10 +17,11 @@
  */
 
 import { LiteSVMProvider } from "anchor-litesvm";
-import { LiteSVM } from "litesvm";
+import { FailedTransactionMetadata, LiteSVM } from "litesvm";
 import * as path from "path";
 import { readFileSync } from "fs";
 import {
+  AddressLookupTableAccount,
   Ed25519Program,
   Keypair,
   LAMPORTS_PER_SOL,
@@ -29,8 +30,11 @@ import {
   SystemProgram,
   Transaction,
   TransactionInstruction,
+  TransactionMessage,
   TransactionSignature,
+  VersionedTransaction,
 } from "@solana/web3.js";
+import bs58 from "bs58";
 import {
   Program,
   Wallet,
@@ -68,6 +72,7 @@ import {
   encodeBurnSignerMessage,
   encodeEd25519InstructionData,
 } from "../burn_data";
+import { expect } from "chai";
 
 export class GatewayWalletTestClient {
   svm: LiteSVM;
@@ -543,6 +548,7 @@ export class GatewayWalletTestClient {
         isWritable: boolean;
         isSigner: boolean;
       }[];
+      lookupTable?: AddressLookupTableAccount;
     },
     burnSigner: EvmKeypair,
     feePayer: Keypair = this.owner
@@ -580,6 +586,31 @@ export class GatewayWalletTestClient {
       })
       .remainingAccounts(params.remainingAccounts || [])
       .instruction();
+
+    if (params.lookupTable) {
+      const instructions = params.excludeEd25519Instruction
+        ? [burnInstruction]
+        : [ed25519Instruction, burnInstruction];
+
+      const messageV0 = new TransactionMessage({
+        payerKey: feePayer.publicKey,
+        recentBlockhash: this.svm.latestBlockhash(),
+        instructions: instructions,
+      }).compileToV0Message([params.lookupTable]);
+
+      const versionedTx = new VersionedTransaction(messageV0);
+      versionedTx.sign([feePayer]);
+
+      const serialized = versionedTx.serialize();
+      console.log("Gateway burn with LuT tx size:", serialized.length);
+      expect(serialized.length).to.be.lessThan(1232, "Tx size is too large");
+
+      const result = this.svm.sendTransaction(versionedTx);
+      if (result instanceof FailedTransactionMetadata) {
+        throw new Error(`Transaction failed: ${result.toString()}`);
+      }
+      return bs58.encode(result.signature());
+    }
 
     const transaction = new Transaction();
     if (!params.excludeEd25519Instruction) {

@@ -7,8 +7,8 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-gateway_minter = "3YG8pvZVNTb3wXVg1UgHfvaTC7AncaNKHgtmzxBW7uuG"
-gateway_wallet = "FoJivoRruRbb3V718kkhXhdXnQTwqPFht6CSxwg158aQ"
+gateway_minter = "dev7nrwT5HL2S1mdcmzgpUDfyEKZaQfZLRmNAhYZCVa"
+gateway_wallet = "devN7ZZFhGVTgwoKHaDDTFFgrhRzSGzuC6hgVFPrxbs"
 cpi_test = "cpiRNFnzqmBEe1AxU3SjZJzh2L3LeLhtZ2UaGx41n8u"
 
 [workspace]

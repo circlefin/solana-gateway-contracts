@@ -65,7 +65,8 @@ export function randomBigInt(): bigint {
  */
 export function bigIntToBuffer32BE(value: bigint): Buffer {
   const buffer = Buffer.alloc(32);
-  buffer.writeBigUInt64BE(value, 24);
+  const hex = value.toString(16).padStart(64, "0");
+  Buffer.from(hex, "hex").copy(buffer);
   return buffer;
 }
 

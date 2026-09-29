@@ -43,8 +43,8 @@
 //! ```
 //! offset  size  field
 //! 0       4     magic (0x070afbc2)
-//! 4       32    max_block_height (u256, only last 8 bytes used as u64)
-//! 36      32    max_fee (u256, only last 8 bytes used as u64)
+//! 4       32    max_block_height (u256, falls back to u64::MAX if high bytes non-zero)
+//! 36      32    max_fee (u256, falls back to u64::MAX if high bytes non-zero)
 //! 68      4     transfer_spec_length
 //! 72      ?     transfer_spec
 //! ```
@@ -200,11 +200,11 @@ impl<'a> BurnData<'a> {
     }
 
     pub fn max_block_height(&self) -> Result<u64> {
-        self.read_u64_with_data_offset(Self::MAX_BLOCK_HEIGHT_OFFSET, Self::U256_TO_U64_OFFSET)
+        self.read_u256_as_saturated_u64(Self::MAX_BLOCK_HEIGHT_OFFSET)
     }
 
     pub fn max_fee(&self) -> Result<u64> {
-        self.read_u64_with_data_offset(Self::MAX_FEE_OFFSET, Self::U256_TO_U64_OFFSET)
+        self.read_u256_as_saturated_u64(Self::MAX_FEE_OFFSET)
     }
 
     pub fn transfer_spec_length(&self) -> Result<u32> {
@@ -331,6 +331,17 @@ impl<'a> BurnData<'a> {
                 .try_into()
                 .map_err(|_| error!(GatewayWalletError::MalformedBurnData))?,
         ))
+    }
+
+    /// Reads a u256 field at the given offset as a u64, saturating at u64::MAX when the
+    /// high bytes are non-zero instead of rejecting the value
+    fn read_u256_as_saturated_u64(&self, index: usize) -> Result<u64> {
+        let high_bytes_end = Self::checked_add(index, Self::U256_TO_U64_OFFSET)?;
+        let has_non_zero_high_bytes = self.data[index..high_bytes_end].iter().any(|&x| x != 0);
+        if has_non_zero_high_bytes {
+            return Ok(u64::MAX);
+        }
+        self.read_u64(high_bytes_end)
     }
 
     /// Reads bytes field at the given offset
