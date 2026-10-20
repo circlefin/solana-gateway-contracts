@@ -19,12 +19,20 @@
 import { LiteSVM } from "litesvm";
 import { GatewayWalletTestClient } from "./test_client";
 import { expect } from "chai";
-import { Keypair, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
+import {
+  Keypair,
+  LAMPORTS_PER_SOL,
+  PublicKey,
+  SYSVAR_INSTRUCTIONS_PUBKEY,
+  SystemProgram,
+} from "@solana/web3.js";
+import {
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+  TOKEN_PROGRAM_ID,
+} from "@solana/spl-token";
 import { SOLANA_DOMAIN } from "../constants";
 import {
   BI_TRANSFER_SPEC_LENGTH_OFFSET,
-  BI_MAX_BLOCK_HEIGHT_OFFSET,
-  BI_MAX_FEE_OFFSET,
   BI_TRANSFER_SPEC_OFFSET,
   TS_VALUE_OFFSET,
   encodeBurnIntent,
@@ -44,6 +52,8 @@ import {
   generateSignerKeypair,
   EvmKeypair,
   expectEd25519ProgramError,
+  createAddressLookupTable,
+  expectTransactionTooLargeError,
 } from "../utils";
 
 function expectgatewayBurnedToEqual(
@@ -652,7 +662,7 @@ describe("gatewayBurn", () => {
       );
     });
 
-    it("should fail when u256 high bytes are non-zero", async () => {
+    it("should fail when u256 high bytes are non-zero for value", async () => {
       const { intent, bytes: validBurnIntentBytes } = createSignedBurnIntent({
         signer: depositor,
         transferSpecOverrides: {
@@ -667,48 +677,6 @@ describe("gatewayBurn", () => {
       const remainingAccounts = createGatewayBurnRemainingAccounts(
         [intent],
         client.gatewayWalletProgram.programId
-      );
-
-      // Test max_block_height with non-zero high bytes
-      const invalid1 = Buffer.from(validBurnIntentBytes);
-      // Set a non-zero byte in the high 24 bytes of max_block_height
-      // max_block_height is a 32-byte u256, we need to modify bytes 0-23 (high bytes)
-      invalid1[BI_MAX_BLOCK_HEIGHT_OFFSET + 20] = 0x01;
-      await expectAnchorError(
-        client.gatewayBurn(
-          {
-            burnIntent: invalid1,
-            userSignature: signBurnIntent(invalid1, depositor.secretKey),
-            tokenMint,
-            custodyTokenAccount: custodyTokenAccountPDA,
-            feeRecipientTokenAccount,
-            deposit,
-            remainingAccounts,
-          },
-          defaultBurnSigner
-        ),
-        "InvalidU64HighBytes"
-      );
-
-      // Test max_fee with non-zero high bytes
-      const invalid2 = Buffer.from(validBurnIntentBytes);
-      // Set a non-zero byte in the high 24 bytes of max_fee
-      // max_fee is a 32-byte u256, we need to modify bytes 0-23 (high bytes)
-      invalid2[BI_MAX_FEE_OFFSET + 6] = 0x01;
-      await expectAnchorError(
-        client.gatewayBurn(
-          {
-            burnIntent: invalid2,
-            userSignature: signBurnIntent(invalid2, depositor.secretKey),
-            tokenMint,
-            custodyTokenAccount: custodyTokenAccountPDA,
-            feeRecipientTokenAccount,
-            deposit,
-            remainingAccounts,
-          },
-          defaultBurnSigner
-        ),
-        "InvalidU64HighBytes"
       );
 
       // Test value with non-zero high bytes
@@ -2293,6 +2261,38 @@ describe("gatewayBurn", () => {
       expect(events.length).to.equal(1);
       expect(events[0].name).to.equal("gatewayBurned");
     });
+
+    it("should succeed with large max_block_height", async () => {
+      const U256_MAX = BigInt(
+        "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      );
+
+      const { events } = await executeBurnAndGetEvents({
+        burnAmount: BigInt(1000000),
+        intentOverrides: {
+          maxBlockHeight: U256_MAX,
+        },
+      });
+
+      expect(events.length).to.equal(1);
+      expect(events[0].name).to.equal("gatewayBurned");
+    });
+
+    it("should succeed with large max_fee", async () => {
+      const U256_MAX = BigInt(
+        "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      );
+
+      const { events } = await executeBurnAndGetEvents({
+        burnAmount: BigInt(1000000),
+        intentOverrides: {
+          maxFee: U256_MAX,
+        },
+      });
+
+      expect(events.length).to.equal(1);
+      expect(events[0].name).to.equal("gatewayBurned");
+    });
   });
 
   describe("With Delegates", () => {
@@ -2585,6 +2585,75 @@ describe("gatewayBurn", () => {
         ),
         "DelegateSignerMismatch"
       );
+    });
+  });
+
+  describe("With Address Lookup Table", () => {
+    it("should successfully burn using a lookup table", async () => {
+      // Create a lookup table with common addresses
+      const lowCardinalityAccounts = [
+        client.pdas.gatewayWallet.publicKey, // gateway_wallet PDA
+        SYSVAR_INSTRUCTIONS_PUBKEY, // instructions sysvar
+        SystemProgram.programId, // system_program
+        TOKEN_PROGRAM_ID, // token_program
+        ASSOCIATED_TOKEN_PROGRAM_ID, // associated_token_program
+      ];
+
+      const lookupTable = await createAddressLookupTable(
+        svm,
+        client.owner,
+        lowCardinalityAccounts
+      );
+
+      // Advance slot (ALT addresses can't be used in the same slot they were added)
+      const currentSlot = Number(svm.getClock().slot);
+      svm.warpToSlot(BigInt(currentSlot + 1));
+
+      // Create a burn intent
+      const {
+        intent: burnIntent,
+        bytes: burnBytes,
+        signature: signature,
+      } = createSignedBurnIntent({
+        signer: depositor,
+        transferSpecOverrides: {
+          sourceContract: client.gatewayWalletProgram.programId,
+          sourceToken: tokenMint,
+          sourceDepositor: depositor.publicKey,
+          value: BigInt(100000000), // 100 tokens with 6 decimals
+          hookData: Buffer.alloc(100),
+          hookDataLength: 100,
+        },
+      });
+
+      console.log("Burn intent size:", burnBytes.length);
+
+      const burnParams = {
+        burnIntent: burnBytes,
+        userSignature: signature,
+        tokenMint,
+        custodyTokenAccount: custodyTokenAccountPDA,
+        feeRecipientTokenAccount,
+        deposit,
+        remainingAccounts: createGatewayBurnRemainingAccounts(
+          [burnIntent],
+          client.gatewayWalletProgram.programId
+        ),
+      };
+
+      // Should fail when the lookup table is not used
+      await expectTransactionTooLargeError(
+        client.gatewayBurn(burnParams, defaultBurnSigner)
+      );
+
+      // Should succeed when the lookup table is used
+      const txSig = await client.gatewayBurn(
+        { ...burnParams, lookupTable },
+        defaultBurnSigner
+      );
+      const events = getEvents(client.svm, txSig, client.gatewayWalletProgram);
+      expect(events).to.have.lengthOf(1);
+      expect(events[0].name).to.equal("gatewayBurned");
     });
   });
 });

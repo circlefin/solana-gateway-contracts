@@ -8,6 +8,7 @@
     "format:fix": "cargo fmt --all && prettier \"**/*.{js,ts}\" -w",
     "lint": "cargo clippy -- -D warnings && eslint .",
     "lint:fix": "cargo clippy --fix --allow-dirty && eslint . --fix",
+    "types": "tsc --noEmit",
     "test": "ts-mocha -p tsconfig.json \"tests/**/*.test.ts\"",
     "ci": "yarn format && yarn lint && yarn test"
   },

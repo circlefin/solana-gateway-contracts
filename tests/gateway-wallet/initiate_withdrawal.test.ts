@@ -33,7 +33,6 @@ describe("GatewayWallet initiateWithdrawal", () => {
     testClient = new GatewayWalletTestClient(svm);
     await testClient.initialize({
       localDomain: 1,
-      version: 1,
       withdrawalDelay: 100, // 100 slots delay
     });
 

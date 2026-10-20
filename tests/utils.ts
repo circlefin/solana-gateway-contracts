@@ -116,6 +116,18 @@ export const expectAccountExistsError = async (promise: Promise<unknown>) => {
   throw new Error("Call should've failed");
 };
 
+export const expectTransactionTooLargeError = async (
+  promise: Promise<unknown>
+) => {
+  try {
+    await promise;
+  } catch (err) {
+    expect(err).to.match(/Transaction too large/);
+    return;
+  }
+  throw new Error("Call should've failed");
+};
+
 export function expectAttestationUsedToEqual(
   actual: { name: string; data: Record<string, unknown> }[],
   expected: MintAttestationElement[]
